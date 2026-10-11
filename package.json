@@ -3,13 +3,17 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "next dev",
-    "build": "next build",
+    "dev": "npm run migrate && next dev",
+    "build": "npm run migrate && next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "test": "node lib/stats.test.ts",
+    "migrate": "node --disable-warning=ExperimentalWarning --env-file-if-exists=.env --env-file-if-exists=.env.local lib/migrate.mts",
+    "user": "npm run migrate --silent && node --disable-warning=ExperimentalWarning --env-file-if-exists=.env --env-file-if-exists=.env.local lib/user.mts"
   },
   "dependencies": {
     "next": "16.4.0",
+    "postgres": "^3.4.9",
     "react": "19.3.0",
     "react-dom": "19.3.0"
   },

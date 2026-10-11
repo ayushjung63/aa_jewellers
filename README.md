@@ -1,36 +1,34 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# AA Jewellers
 
-## Getting Started
+Mobile-first PWA for inventory, orders, sales dashboard and expenses.
+Next.js 16 + Tailwind 4 + Postgres.
 
-First, run the development server:
+## Setup (once)
 
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
-```
+1. Create a Postgres database (local, or any host: Neon, Railway, Render…).
+2. Tables are created/updated from `schema.sql` automatically on `npm run dev` and `npm run build` (or `npm run migrate`).
+3. Copy `.env.example` to `.env.local` and fill it in. `AUTH_SECRET`: `openssl rand -hex 32`.
+   Set `APP_TIMEZONE` to your timezone, it decides what "today" means on the dashboard.
+4. `npm install`, then add up to 3 users: `npm run user -- <username>` (asks for a password; run again to reset it).
+5. `npm run dev` → http://localhost:3000
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Each user can change their password under **Account** (tap the circle on Home). Every change (orders, stock, expenses, sign-ins) is logged with the username in **Account → Activity log**.
+To remove a user: `delete from users where username = '<name>';`
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+Product photos are stored in the database (`products.photo`) and served from `/photo/<id>`.
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+## Deploy
 
-## Learn More
+Push to GitHub → import on https://vercel.com → add the env vars from `.env.example` → deploy.
 
-To learn more about Next.js, take a look at the following resources:
+## Install on phone
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+Open the Vercel URL → Android Chrome: menu → **Install app**; iPhone Safari: Share → **Add to Home Screen**.
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+## How stock works
 
-## Deploy on Vercel
+- Placing an order deducts stock in the database (`create_order`); overselling is refused.
+- New orders start as Pending or Delivered. Marking Returned puts stock back; un-returning deducts it again.
+- Sales on the dashboard = order totals (after discount), excluding Returned.
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+`npm test` checks the dashboard date windows.
