@@ -17,3 +17,16 @@ export function salesWindows(orders: Row[], today: string) {
     }),
   ) as Record<keyof typeof windows, { sales: number; count: number }>;
 }
+
+// Calendar cells for "YYYY-MM", weeks starting Sunday; nulls pad the first week.
+export function monthGrid(ym: string): (string | null)[] {
+  const first = new Date(ym + "-01T00:00:00Z");
+  const days = new Date(Date.UTC(first.getUTCFullYear(), first.getUTCMonth() + 1, 0)).getUTCDate();
+  return [...Array(first.getUTCDay()).fill(null), ...Array.from({ length: days }, (_, i) => `${ym}-${String(i + 1).padStart(2, "0")}`)];
+}
+
+export function addMonths(ym: string, n: number) {
+  const d = new Date(ym + "-01T00:00:00Z");
+  d.setUTCMonth(d.getUTCMonth() + n);
+  return d.toISOString().slice(0, 7);
+}

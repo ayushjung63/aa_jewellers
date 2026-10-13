@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { Pager } from "@/components/pager";
 import { StatusBadge } from "@/components/status";
+import { DateRange } from "./date-range";
 import { niceDate, rs, STATUSES, today } from "@/lib/format";
 import { daysAgo } from "@/lib/stats";
 import { sql } from "@/lib/db";
@@ -50,10 +51,12 @@ export default async function Orders({ searchParams }: PageProps<"/orders">) {
         <Link href="/orders/customers" className="btn-ghost py-2">Customers</Link>
       </header>
 
-      <form action="/orders" className="flex gap-2">
+      <form action="/orders" role="search" className="relative">
         {status && <input type="hidden" name="status" value={status} />}
-        <input className="input flex-1" type="search" name="q" defaultValue={q} placeholder="Search name or phone" />
-        <button className="btn-ghost py-2">Search</button>
+        <svg viewBox="0 0 24 24" className="pointer-events-none absolute top-1/2 left-3.5 size-4 -translate-y-1/2 text-muted" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
+          <circle cx="11" cy="11" r="7" /><path d="m20 20-3.5-3.5" />
+        </svg>
+        <input className="input pl-10" type="search" name="q" defaultValue={q} placeholder="Search name or phone" enterKeyHint="search" aria-label="Search orders by customer name or phone" />
       </form>
 
       <div className="-mx-4 flex gap-2 overflow-x-auto px-4 pb-1 [scrollbar-width:none]">
@@ -62,20 +65,8 @@ export default async function Orders({ searchParams }: PageProps<"/orders">) {
             {p.label}
           </Link>
         ))}
+        <DateRange from={from} to={to} today={t} active={!q && !preset} status={status} />
       </div>
-
-      <form action="/orders" className="flex items-end gap-2">
-        {status && <input type="hidden" name="status" value={status} />}
-        <label className="flex-1">
-          <span className="label">From</span>
-          <input className="input" type="date" name="from" defaultValue={from} max={t} required />
-        </label>
-        <label className="flex-1">
-          <span className="label">To</span>
-          <input className="input" type="date" name="to" defaultValue={to} max={t} required />
-        </label>
-        <button className="btn-ghost py-2">Show</button>
-      </form>
 
       <div className="-mx-4 flex gap-2 overflow-x-auto px-4 pb-1 [scrollbar-width:none]">
         {[undefined, ...STATUSES].map((s) => (
