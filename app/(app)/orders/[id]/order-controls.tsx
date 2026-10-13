@@ -15,7 +15,7 @@ export function OrderControls({ id, status, payment }: { id: number; status: str
 
   return (
     <section className={`space-y-3 ${pending ? "opacity-60" : ""}`}>
-      <Group label="Status" options={[...new Set([status, "Delivered", "Returned"])]} value={status} onPick={(v) => set("status", v)} />
+      <Group label="Status" options={[...new Set([status, "Delivered", ...VOID])]} value={status} onPick={(v) => set("status", v)} />
       <Group label="Payment" options={PAYMENTS} value={payment} onPick={(v) => set("payment", v)} />
       {error && <p className="text-sm text-red-600">{error}</p>}
     </section>

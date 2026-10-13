@@ -1,27 +1,31 @@
 "use client";
 
 import Link from "next/link";
-import { startTransition, useActionState, useState, useTransition } from "react";
+import { startTransition, useActionState, useRef, useState, useTransition } from "react";
 import { deleteProduct, saveProduct, type State } from "@/app/actions";
 import { Thumb } from "./product-list";
 
 export type P = { id: number; name: string; sku: string | null; cost_price: number; sell_price: number; stock_qty: number; low_stock_at: number; image_url: string | null };
 
-// Shrink phone photos (often 3–5 MB) to an ~800px JPEG before upload.
-async function shrink(input: HTMLInputElement) {
-  const file = input.files?.[0];
-  if (!file) return null;
-  const img = await createImageBitmap(file);
-  const scale = Math.min(1, 800 / Math.max(img.width, img.height));
+function jpeg(img: ImageBitmap, max: number) {
+  const scale = Math.min(1, max / Math.max(img.width, img.height));
   const canvas = document.createElement("canvas");
   canvas.width = img.width * scale;
   canvas.height = img.height * scale;
   canvas.getContext("2d")!.drawImage(img, 0, 0, canvas.width, canvas.height);
-  const blob = await new Promise<Blob>((r) => canvas.toBlob((b) => r(b!), "image/jpeg", 0.82));
+  return new Promise<Blob>((r) => canvas.toBlob((b) => r(b!), "image/jpeg", 0.82));
+}
+
+// Shrink phone photos (often 3–5 MB) to an ~800px JPEG before upload, plus a 240px thumb (3× the largest 80px <img>).
+async function shrink(input: HTMLInputElement) {
+  const file = input.files?.[0];
+  if (!file) return null;
+  const img = await createImageBitmap(file);
+  const [full, thumb] = await Promise.all([jpeg(img, 800), jpeg(img, 240)]);
   const dt = new DataTransfer();
-  dt.items.add(new File([blob], "photo.jpg", { type: "image/jpeg" }));
+  dt.items.add(new File([full], "photo.jpg", { type: "image/jpeg" }));
   input.files = dt.files;
-  return URL.createObjectURL(blob);
+  return thumb;
 }
 
 export function ProductForm({ product }: { product?: P }) {
@@ -29,6 +33,7 @@ export function ProductForm({ product }: { product?: P }) {
   const [preview, setPreview] = useState(product?.image_url ?? null);
   const [delState, setDelState] = useState<State>();
   const [deleting, startDelete] = useTransition();
+  const thumb = useRef<Blob | null>(null);
 
   return (
     <form
@@ -37,6 +42,7 @@ export function ProductForm({ product }: { product?: P }) {
         // Not action={...}: React resets the form after an action, which would wipe the inputs on error.
         e.preventDefault();
         const data = new FormData(e.currentTarget);
+        if (thumb.current) data.set("thumb", thumb.current, "thumb.jpg");
         startTransition(() => action(data));
       }}
     >
@@ -44,7 +50,10 @@ export function ProductForm({ product }: { product?: P }) {
       <label className="flex items-center gap-4">
         <Thumb src={preview} className="size-20" />
         <span className="btn-ghost py-2">{preview ? "Change photo" : "Add photo"}</span>
-        <input type="file" name="photo" accept="image/*" className="sr-only" onChange={async (e) => setPreview(await shrink(e.currentTarget))} />
+        <input type="file" name="photo" accept="image/*" className="sr-only" onChange={async (e) => {
+            thumb.current = await shrink(e.currentTarget);
+            setPreview(thumb.current && URL.createObjectURL(thumb.current));
+          }} />
       </label>
 
       <Field label="Name" name="name" defaultValue={product?.name} required />

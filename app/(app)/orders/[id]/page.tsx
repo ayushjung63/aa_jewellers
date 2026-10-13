@@ -7,10 +7,12 @@ import { sql } from "@/lib/db";
 
 export default async function OrderPage({ params }: PageProps<"/orders/[id]">) {
   const { id } = await params;
-  const [o] = await sql`select * from orders where id = ${id}`;
+  const [[o], items] = await Promise.all([
+    sql`select * from orders where id = ${id}`,
+    sql<{ qty: number; unit_price: number; id: number; name: string; image_url: string | null }[]>`
+      select i.qty, i.unit_price, p.id, p.name, p.image_url from order_items i join products p on p.id = i.product_id where i.order_id = ${id}`,
+  ]);
   if (!o) notFound();
-  const items = await sql<{ qty: number; unit_price: number; id: number; name: string; image_url: string | null }[]>`
-    select i.qty, i.unit_price, p.id, p.name, p.image_url from order_items i join products p on p.id = i.product_id where i.order_id = ${id}`;
 
   const subtotal = items.reduce((s, i) => s + i.qty * i.unit_price, 0);
 

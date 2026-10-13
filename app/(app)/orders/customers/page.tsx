@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { Pager } from "@/components/pager";
-import { niceDate, rs } from "@/lib/format";
+import { niceDate, rs, VOID } from "@/lib/format";
 import { sql } from "@/lib/db";
 
 const PER_PAGE = 30;
@@ -12,7 +12,7 @@ export default async function Customers({ searchParams }: PageProps<"/orders/cus
     select (array_agg(customer_name order by id desc))[1] as customer_name,
            nullif(coalesce(phone, ''), '') as phone,
            count(*)::int as orders,
-           coalesce(sum(total) filter (where status <> 'Returned'), 0) as spent,
+           coalesce(sum(total) filter (where status not in ${sql(VOID)}), 0) as spent,
            max(order_date) as last_order,
            (count(*) over ())::int as total_count
     from orders

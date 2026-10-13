@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { StatusBadge } from "@/components/status";
-import { niceDate, rs } from "@/lib/format";
+import { niceDate, rs, VOID } from "@/lib/format";
 import { sql } from "@/lib/db";
 
 export default async function Customer({ searchParams }: PageProps<"/orders/customers/view">) {
@@ -16,7 +16,7 @@ export default async function Customer({ searchParams }: PageProps<"/orders/cust
   if (!orders.length) notFound();
 
   const latest = orders.reduce((a, b) => (b.id > a.id ? b : a));
-  const spent = orders.filter((o) => o.status !== "Returned").reduce((s, o) => s + o.total, 0);
+  const spent = orders.filter((o) => !VOID.includes(o.status)).reduce((s, o) => s + o.total, 0);
 
   return (
     <div className="space-y-5">

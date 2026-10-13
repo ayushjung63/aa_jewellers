@@ -24,18 +24,22 @@ create table if not exists orders (
   channel       text not null default 'Instagram'
                 check (channel in ('Instagram','Facebook','WhatsApp','TikTok','Website','Other')),
   status        text not null default 'Pending'
-                check (status in ('Pending','Delivered','Returned')),
+                check (status in ('Pending','Delivered','Returned','Refused','Cancelled')),
   payment       text not null default 'COD' check (payment in ('Paid','COD','Unpaid')),
   discount      numeric(10,2) not null default 0 check (discount >= 0),
   total         numeric(10,2) not null default 0,
   created_at    timestamptz not null default now()
 );
--- 2026-10-11: statuses trimmed to Pending/Delivered/Returned (both old void states map to Returned).
-update orders set status = 'Pending'  where status in ('Packed','Shipped');
-update orders set status = 'Returned' where status = 'Cancelled';
+-- 2026-10-11: Packed/Shipped folded into Pending. 2026-10-13: Refused + Cancelled added (void, like Returned).
+update orders set status = 'Pending' where status in ('Packed','Shipped');
 alter table orders drop constraint if exists orders_status_check;
-alter table orders add constraint orders_status_check check (status in ('Pending','Delivered','Returned'));
+alter table orders add constraint orders_status_check check (status in ('Pending','Delivered','Returned','Refused','Cancelled'));
 create index if not exists orders_date on orders (order_date);
+-- Customer lookups match on lower(name) + phone.
+create index if not exists orders_customer on orders (lower(customer_name), coalesce(phone, ''));
+
+-- 2026-10-13: small JPEG for list thumbnails; photo keeps the 800px original.
+alter table products add column if not exists thumb bytea;
 
 create table if not exists order_items (
   order_id   int not null references orders on delete cascade,
@@ -60,7 +64,8 @@ language plpgsql as $$
 declare
   oid int;
   it  jsonb;
-  p   products;
+  pid int;
+  price numeric;
   q   int;
   sub numeric := 0;
 begin
@@ -77,25 +82,25 @@ begin
     q := (it->>'qty')::int;
     update products set stock_qty = stock_qty - q
      where id = (it->>'product_id')::int and stock_qty >= q
-    returning * into p;
+    returning id, sell_price into pid, price; -- not `*`: that would read the photo bytes
     if not found then
       raise exception 'Not enough stock for %',
         coalesce((select name from products where id = (it->>'product_id')::int), 'item');
     end if;
-    insert into order_items values (oid, p.id, q, p.sell_price);
-    sub := sub + q * p.sell_price;
+    insert into order_items values (oid, pid, q, price);
+    sub := sub + q * price;
   end loop;
 
   update orders set total = greatest(sub - discount, 0) where id = oid;
   return oid;
 end $$;
 
--- Returned puts stock back; un-returning takes it out again.
+-- Returned/Refused/Cancelled put stock back; moving out of them takes it out again. Keep in sync with VOID in lib/format.ts.
 create or replace function restock_on_status() returns trigger
 language plpgsql as $$
 declare
-  was_void bool := old.status = 'Returned';
-  is_void  bool := new.status = 'Returned';
+  was_void bool := old.status in ('Returned','Refused','Cancelled');
+  is_void  bool := new.status in ('Returned','Refused','Cancelled');
   sign     int;
 begin
   if was_void = is_void then return new; end if;

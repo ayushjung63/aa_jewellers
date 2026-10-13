@@ -19,7 +19,10 @@ export const viewport: Viewport = {
 export default function RootLayout({ children }: LayoutProps<"/">) {
   return (
     <html lang="en" className={`${inter.variable} ${fraunces.variable} antialiased`}>
-      <body className="min-h-dvh font-sans">{children}</body>
+      <body className="min-h-dvh font-sans">
+        {children}
+        <script>{`if ("serviceWorker" in navigator) navigator.serviceWorker.register("/sw.js")`}</script>
+      </body>
     </html>
   );
 }

@@ -9,18 +9,16 @@ export default async function Dashboard() {
   const t = today();
   const from = daysAgo(t, 29);
 
-  const [user, orders, expenses, products, recent] = await Promise.all([
+  const [user, orders, expenses, low, recent] = await Promise.all([
     currentUser(),
     sql<{ order_date: string; total: number }[]>`select order_date, total from orders where order_date >= ${from} and status not in ${sql(VOID)}`,
     sql<{ amount: number }[]>`select amount from expenses where date between ${from} and ${t}`,
-    // ponytail: loads every product to find low stock; fine for a few thousand items, use a view if it grows past that
-    sql<{ id: number; name: string; stock_qty: number; low_stock_at: number }[]>`select id, name, stock_qty, low_stock_at from products order by stock_qty`,
+    sql<{ id: number; name: string; stock_qty: number }[]>`select id, name, stock_qty from products where stock_qty <= low_stock_at order by stock_qty, name limit 5`,
     sql<{ id: number; customer_name: string; order_date: string; total: number; status: string }[]>`select id, customer_name, order_date, total, status from orders order by id desc limit 5`,
   ]);
 
   const w = salesWindows(orders, t);
   const spent = expenses.reduce((s, e) => s + Number(e.amount), 0);
-  const low = products.filter((p) => p.stock_qty <= p.low_stock_at);
 
   return (
     <div className="space-y-5">
@@ -51,7 +49,7 @@ export default async function Dashboard() {
         <section>
           <SectionTitle title="Low stock" href="/inventory" />
           <div className="card divide-y divide-line">
-            {low.slice(0, 5).map((p) => (
+            {low.map((p) => (
               <Link key={p.id} href={`/inventory/${p.id}`} className="flex items-center justify-between px-4 py-3">
                 <span className="truncate">{p.name}</span>
                 <span className={`num text-sm font-semibold ${p.stock_qty === 0 ? "text-red-600" : "text-amber-700"}`}>

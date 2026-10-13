@@ -95,7 +95,11 @@ export async function saveProduct(_: State, f: FormData): Promise<State> {
   if (!row.name) return { error: "Name is required" };
 
   const photo = f.get("photo") as File | null;
-  if (photo && photo.size > 0) row.photo = Buffer.from(await photo.arrayBuffer());
+  if (photo && photo.size > 0) {
+    row.photo = Buffer.from(await photo.arrayBuffer());
+    const thumb = f.get("thumb") as File | null;
+    row.thumb = thumb && thumb.size > 0 ? Buffer.from(await thumb.arrayBuffer()) : null;
+  }
 
   try {
     // Self-join on `prev` returns the pre-update values in the same statement.

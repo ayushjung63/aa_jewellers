@@ -14,5 +14,7 @@ export const niceTime = (t: Date) =>
 
 export const CHANNELS = ["Instagram", "Facebook", "WhatsApp", "TikTok", "Website", "Other"];
 export const PAYMENTS = ["COD", "Paid", "Unpaid"];
-export const STATUSES = ["Pending", "Delivered", "Returned"];
-export const VOID = ["Returned"];
+// VOID = order didn't go through; its items go back into stock (schema.sql restock_on_status).
+// Cancelled: called off before delivery. Refused: customer didn't accept the parcel.
+export const VOID = ["Returned", "Refused", "Cancelled"];
+export const STATUSES = ["Pending", "Delivered", ...VOID];
