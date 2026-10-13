@@ -21,6 +21,9 @@ Product photos are stored in the database (`products.photo`) and served from `/p
 
 Push to GitHub → import on https://vercel.com → add the env vars from `.env.example` → deploy.
 
+`vercel.json` pins the server to Singapore (`sin1`), next to the Neon database. If you move the database, move this too:
+every page and photo makes database round trips, and a far-away server makes each one slow.
+
 ## Install on phone
 
 Open the Vercel URL → Android Chrome: menu → **Install app**; iPhone Safari: Share → **Add to Home Screen**.
@@ -28,7 +31,7 @@ Open the Vercel URL → Android Chrome: menu → **Install app**; iPhone Safari:
 ## How stock works
 
 - Placing an order deducts stock in the database (`create_order`); overselling is refused.
-- New orders start as Pending or Delivered. Marking Returned puts stock back; un-returning deducts it again.
-- Sales on the dashboard = order totals (after discount), excluding Returned.
+- New orders start as Pending or Delivered. Marking Returned, Refused (customer didn't accept it) or Cancelled puts stock back; moving it out of those deducts it again.
+- Sales on the dashboard = order totals (after discount), excluding Returned / Refused / Cancelled.
 
 `npm test` checks the dashboard date windows.
