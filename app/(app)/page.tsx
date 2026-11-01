@@ -51,10 +51,7 @@ const profit = w.month.sales - cost - spent; // sp - cp - discount - expenses
   <Stat label="Last 7 days" value={rs(w.week.sales)} sub={`${w.week.count} orders`} />
   <Stat label="Last 30 days" value={rs(w.month.sales)} sub={`${w.month.count} orders`} />
   <Stat label="Expenses · 30d" value={rs(spent)} />
-  <Stat label="Revenue · 30d" value={rs(revenue)} sub="Sales − expenses" tone={revenue < 0 ? "text-red-600" : ""} />
-  <div className="col-span-2">
-    <Stat label="Net profit · 30d" value={rs(profit)} sub="Sales − cost − discount − expenses" tone={profit < 0 ? "text-red-600" : "text-emerald-700"} />
-  </div>
+  <Stat label="Net profit · 30d" value={rs(profit)} tone={profit < 0 ? "text-red-600" : "text-emerald-700"} />
 </section>
 
       {low.length > 0 && (
