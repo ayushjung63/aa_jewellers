@@ -26,9 +26,14 @@ export function ExpenseRow({ e }: { e: Expense }) {
       </div>
       <span className="num text-sm font-semibold">{rs(e.amount)}</span>
       <button aria-label={`Edit ${e.title}`} onClick={() => setEditing(true)} className="grid size-8 place-items-center rounded-full text-muted hover:bg-bg">✎</button>
-      <form action={deleteExpense.bind(null, e.id)}>
-        <button aria-label={`Delete ${e.title}`} className="grid size-8 place-items-center rounded-full text-muted hover:bg-bg">✕</button>
-      </form>
+     <form
+  action={deleteExpense.bind(null, e.id)}
+  onSubmit={(ev) => {
+    if (!confirm(`Delete "${e.title}" (${rs(e.amount)})?`)) ev.preventDefault();
+  }}
+>
+  <button aria-label={`Delete ${e.title}`} className="grid size-8 place-items-center rounded-full text-muted hover:bg-bg">✕</button>
+</form>
     </div>
   );
 }

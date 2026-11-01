@@ -4,6 +4,7 @@ import { OrderControls } from "./order-controls";
 import { Thumb } from "../../inventory/product-list";
 import { niceDate, rs } from "@/lib/format";
 import { sql } from "@/lib/db";
+import { DeleteOrder } from "../delete-order";
 
 export default async function OrderPage({ params }: PageProps<"/orders/[id]">) {
   const { id } = await params;
@@ -35,6 +36,15 @@ export default async function OrderPage({ params }: PageProps<"/orders/[id]">) {
         </section>
       )}
 
+<div className="flex items-center justify-end gap-2">
+  <Link
+    href={`/orders/${o.id}/edit`}
+    className="rounded-full border border-line bg-white px-4 py-2 text-sm font-semibold text-ink transition hover:bg-bg active:scale-[0.98]"
+  >
+    Edit order
+  </Link>
+  <DeleteOrder id={o.id} />
+</div>
       <section className="card divide-y divide-line">
         {items.map((i) => (
           <Link key={i.id} href={`/inventory/${i.id}`} className="flex items-center gap-3 px-3 py-2.5">

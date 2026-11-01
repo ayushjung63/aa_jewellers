@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { createOrder } from "@/app/actions";
+import { createOrder, updateOrder } from "@/app/actions";
 import { CHANNELS, PAYMENTS, rs } from "@/lib/format";
 import { Thumb } from "../../inventory/product-list";
 
@@ -9,14 +9,28 @@ export type P = { id: number; name: string; sku: string | null; sell_price: numb
 
 export type Customer = { customer_name: string; phone: string | null; address: string | null };
 
-export function OrderForm({ products, customers, today }: { products: P[]; customers: Customer[]; today: string }) {
-  const [cart, setCart] = useState<Record<number, number>>({});
+export type Initial = {
+  id: number;
+  order: {
+    customer_name: string; phone: string | null; address: string | null;
+    status: string; channel: string; payment: string;
+    order_date: string; discount: number;
+  };
+  items: Record<number, number>; // product_id -> qty
+};
+
+export function OrderForm({ products, customers, today, initial }: { products: P[]; customers: Customer[]; today: string; initial?: Initial }) {
+  const [cart, setCart] = useState<Record<number, number>>(initial?.items ?? {});
   const [q, setQ] = useState("");
-  const [discount, setDiscount] = useState(0);
+  const [discount, setDiscount] = useState(Number(initial?.order.discount ?? 0));
   const [error, setError] = useState<string>();
   const [pending, start] = useTransition();
-  const [cust, setCust] = useState({ customer_name: "", phone: "", address: "" });
-  const [picked, setPicked] = useState(false);
+  const [cust, setCust] = useState({
+    customer_name: initial?.order.customer_name ?? "",
+    phone: initial?.order.phone ?? "",
+    address: initial?.order.address ?? "",
+  });
+  const [picked, setPicked] = useState(!!initial);
   const typeCust = (k: keyof typeof cust) => (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
     setCust({ ...cust, [k]: e.target.value });
     setPicked(false);
@@ -28,7 +42,7 @@ export function OrderForm({ products, customers, today }: { products: P[]; custo
     .slice(0, 5);
 
   const byId = Object.fromEntries(products.map((p) => [p.id, p]));
-  const lines = Object.entries(cart).map(([id, qty]) => ({ p: byId[id], qty }));
+  const lines = Object.entries(cart).filter(([id]) => byId[id]).map(([id, qty]) => ({ p: byId[id], qty }));
   const subtotal = lines.reduce((s, l) => s + l.qty * l.p.sell_price, 0);
   const needle = q.trim().toLowerCase();
   const matches = needle ? products.filter((p) => p.name.toLowerCase().includes(needle) || p.sku?.toLowerCase().includes(needle)).slice(0, 8) : [];
@@ -36,7 +50,7 @@ export function OrderForm({ products, customers, today }: { products: P[]; custo
   const setQty = (id: number, qty: number) =>
     setCart((c) => {
       const next = { ...c };
-      if (qty > 0) next[id] = Math.min(qty, byId[id].stock_qty);
+      if (qty > 0) next[id] = qty;
       else delete next[id];
       return next;
     });
@@ -45,8 +59,9 @@ export function OrderForm({ products, customers, today }: { products: P[]; custo
     e.preventDefault();
     if (!lines.length) return setError("Add at least one item");
     const order = Object.fromEntries(new FormData(e.currentTarget)) as Record<string, string>;
+    const items = lines.map((l) => ({ product_id: l.p.id, qty: l.qty }));
     start(async () => {
-      const res = await createOrder(order, lines.map((l) => ({ product_id: l.p.id, qty: l.qty })));
+      const res = initial ? await updateOrder(initial.id, order, items) : await createOrder(order, items);
       setError(res?.error);
     });
   }
@@ -56,18 +71,33 @@ export function OrderForm({ products, customers, today }: { products: P[]; custo
       <section className="space-y-2">
         <h2 className="label">Items</h2>
         <input className="input" type="search" placeholder="Search product to add…" value={q} onChange={(e) => setQ(e.target.value)} />
+
         {matches.length > 0 && (
           <div className="card divide-y divide-line">
-            {matches.map((p) => (
-              <button key={p.id} type="button" className="flex w-full items-center gap-3 px-3 py-2.5 text-left" onClick={() => { setQty(p.id, (cart[p.id] ?? 0) + 1); setQ(""); }}>
-                <Thumb src={p.image_url} className="size-10" />
-                <span className="min-w-0 flex-1 truncate">{p.name}</span>
-                <span className="num text-sm text-muted">{rs(p.sell_price)} · {p.stock_qty} left</span>
-              </button>
-            ))}
+            {matches.map((p) => {
+              const out = p.stock_qty <= 0;
+              return (
+                <button
+                  key={p.id}
+                  type="button"
+                  className="flex w-full items-center gap-3 px-3 py-2.5 text-left"
+                  onClick={() => { setQty(p.id, (cart[p.id] ?? 0) + 1); setQ(""); }}
+                >
+                  <Thumb src={p.image_url} className={`size-10 ${out ? "opacity-60" : ""}`} />
+                  <span className="min-w-0 flex-1 truncate">{p.name}</span>
+                  <span className="num text-sm text-muted">{rs(p.sell_price)}</span>
+                  {out ? (
+                    <span className="rounded-full bg-red-50 px-2 py-0.5 text-[11px] font-semibold uppercase tracking-wide text-red-600">Out of stock</span>
+                  ) : (
+                    <span className="text-sm text-muted">{p.stock_qty} left</span>
+                  )}
+                </button>
+              );
+            })}
           </div>
         )}
-        {needle && !matches.length && <p className="text-sm text-muted">No in-stock product matches “{q}”</p>}
+        {needle && !matches.length && <p className="text-sm text-muted">No product matches “{q}”</p>}
+
         {lines.length > 0 && (
           <div className="card divide-y divide-line">
             {lines.map(({ p, qty }) => (
@@ -75,12 +105,15 @@ export function OrderForm({ products, customers, today }: { products: P[]; custo
                 <Thumb src={p.image_url} className="size-10" />
                 <div className="min-w-0 flex-1">
                   <p className="truncate text-sm font-medium">{p.name}</p>
-                  <p className="num text-xs text-muted">{rs(p.sell_price)} × {qty} = {rs(p.sell_price * qty)}</p>
+                  <p className="num text-xs text-muted">
+                    {rs(p.sell_price)} × {qty} = {rs(p.sell_price * qty)}
+                    {!initial && qty > p.stock_qty && <span className="ml-2 font-semibold text-red-600">{p.stock_qty <= 0 ? "Out of stock" : `Only ${p.stock_qty} in stock`}</span>}
+                  </p>
                 </div>
                 <div className="flex items-center rounded-full border border-line">
                   <button type="button" aria-label="Less" className="size-9 text-lg" onClick={() => setQty(p.id, qty - 1)}>−</button>
                   <span className="num w-6 text-center text-sm font-semibold">{qty}</span>
-                  <button type="button" aria-label="More" className="size-9 text-lg disabled:opacity-30" disabled={qty >= p.stock_qty} onClick={() => setQty(p.id, qty + 1)}>+</button>
+                  <button type="button" aria-label="More" className="size-9 text-lg" onClick={() => setQty(p.id, qty + 1)}>+</button>
                 </div>
               </div>
             ))}
@@ -111,14 +144,14 @@ export function OrderForm({ products, customers, today }: { products: P[]; custo
         <textarea className="input" name="address" placeholder="Address" rows={2} value={cust.address} onChange={typeCust("address")} />
       </section>
 
-      <Chips label="Status" name="status" options={["Pending", "Delivered"]} />
-      <Chips label="Channel" name="channel" options={CHANNELS} />
-      <Chips label="Payment" name="payment" options={PAYMENTS} />
+      <Chips label="Status" name="status" options={["Pending", "Sent to Upaya", "Delivered"]} selected={initial?.order.status} />
+      <Chips label="Channel" name="channel" options={CHANNELS} selected={initial?.order.channel} />
+      <Chips label="Payment" name="payment" options={PAYMENTS} selected={initial?.order.payment} />
 
       <section className="grid grid-cols-2 gap-3">
         <div>
           <label className="label" htmlFor="order_date">Date</label>
-          <input className="input" id="order_date" name="order_date" type="date" defaultValue={today} required />
+          <input className="input" id="order_date" name="order_date" type="date" defaultValue={initial ? String(initial.order.order_date).slice(0, 10) : today} required />
         </div>
         <div>
           <label className="label" htmlFor="discount">Discount (Rs)</label>
@@ -136,19 +169,21 @@ export function OrderForm({ products, customers, today }: { products: P[]; custo
       </section>
 
       {error && <p className="text-sm text-red-600">{error}</p>}
-      <button className="btn-gold w-full py-4 text-base" disabled={pending}>{pending ? "Placing…" : "Place order"}</button>
+      <button className="btn-gold w-full py-4 text-base" disabled={pending}>
+        {pending ? "Saving…" : initial ? "Save changes" : "Place order"}
+      </button>
     </form>
   );
 }
 
-function Chips({ label, name, options }: { label: string; name: string; options: string[] }) {
+function Chips({ label, name, options, selected }: { label: string; name: string; options: string[]; selected?: string }) {
   return (
     <fieldset>
       <legend className="label">{label}</legend>
       <div className="flex flex-wrap gap-2">
         {options.map((o, i) => (
           <label key={o} className="chip cursor-pointer has-checked:border-ink has-checked:bg-ink has-checked:text-white">
-            <input type="radio" name={name} value={o} defaultChecked={i === 0} className="sr-only" />
+            <input type="radio" name={name} value={o} defaultChecked={selected ? o === selected : i === 0} className="sr-only" />
             {o}
           </label>
         ))}

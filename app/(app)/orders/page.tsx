@@ -15,9 +15,19 @@ export default async function Orders({ searchParams }: PageProps<"/orders">) {
   const t = today();
   const status = STATUSES.includes(sp.status as string) ? (sp.status as string) : undefined;
   const q = typeof sp.q === "string" ? sp.q.trim() : "";
-  let from = isDate(sp.from) ? sp.from : t;
-  let to = isDate(sp.to) ? sp.to : t;
-  if (from > to) [from, to] = [to, from];
+  
+let from = isDate(sp.from) ? sp.from : t;
+let to = isDate(sp.to) ? sp.to : t;
+if (from > to) [from, to] = [to, from];
+
+// Fresh visit with no filters: if nothing today, default to the last 7 days
+if (!q && !isDate(sp.from) && !isDate(sp.to)) {
+  const [{ n }] = await sql<{ n: number }[]>`
+    select count(*)::int as n from orders
+    where order_date = ${t} ${status ? sql`and status = ${status}` : sql``}`;
+  if (n === 0) from = daysAgo(t, 6);
+}
+
   const page = Math.max(1, Number(sp.page) || 1);
 
   const like = "%" + q.replace(/[\\%_]/g, "\\$&") + "%";

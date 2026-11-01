@@ -12,7 +12,7 @@ export default async function Dashboard() {
   const [user, orders, expenses, low, recent] = await Promise.all([
     currentUser(),
     sql<{ order_date: string; total: number }[]>`select order_date, total from orders where order_date >= ${from} and status not in ${sql(VOID)}`,
-    sql<{ amount: number }[]>`select amount from expenses where date between ${from} and ${t}`,
+    sql<{ amount: number }[]>`select amount from expenses where in_profit and date between ${from} and ${t}`,
     sql<{ id: number; name: string; stock_qty: number }[]>`select id, name, stock_qty from products where stock_qty <= low_stock_at order by stock_qty, name limit 5`,
     sql<{ id: number; customer_name: string; order_date: string; total: number; status: string }[]>`select id, customer_name, order_date, total, status from orders order by id desc limit 5`,
   ]);

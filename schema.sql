@@ -50,15 +50,35 @@ create table if not exists order_items (
 create index if not exists order_items_order on order_items (order_id);
 
 create table if not exists expenses (
-  id     int generated always as identity primary key,
-  title  text not null,
-  amount numeric(10,2) not null check (amount > 0),
-  date   date not null
+  id        int generated always as identity primary key,
+  title     text not null,
+  amount    numeric(10,2) not null check (amount > 0),
+  date      date not null,
+  in_profit boolean not null default true
 );
 create index if not exists expenses_date on expenses (date);
 
--- Place an order atomically: deduct stock, snapshot prices, compute total.
--- p_items: [{"product_id": 1, "qty": 2}, ...]
+-- for the existing DB
+alter table expenses add column if not exists in_profit boolean not null default true;
+
+-- 1. Expenses: profit flag
+alter table expenses add column if not exists in_profit boolean not null default true;
+
+-- 2. Allow negative stock: drop any CHECK constraint on products that mentions stock_qty
+do $$
+declare c record;
+begin
+  for c in
+    select conname from pg_constraint
+    where conrelid = 'products'::regclass
+      and contype = 'c'
+      and pg_get_constraintdef(oid) ilike '%stock_qty%'
+  loop
+    execute format('alter table products drop constraint %I', c.conname);
+  end loop;
+end $$;
+
+-- 3. Create order: no stock check, stock can go negative
 create or replace function create_order(p_order jsonb, p_items jsonb) returns int
 language plpgsql as $$
 declare
@@ -81,12 +101,9 @@ begin
   for it in select * from jsonb_array_elements(p_items) loop
     q := (it->>'qty')::int;
     update products set stock_qty = stock_qty - q
-     where id = (it->>'product_id')::int and stock_qty >= q
+     where id = (it->>'product_id')::int
     returning id, sell_price into pid, price; -- not `*`: that would read the photo bytes
-    if not found then
-      raise exception 'Not enough stock for %',
-        coalesce((select name from products where id = (it->>'product_id')::int), 'item');
-    end if;
+    if not found then raise exception 'Product not found'; end if;
     insert into order_items values (oid, pid, q, price);
     sub := sub + q * price;
   end loop;
@@ -95,7 +112,67 @@ begin
   return oid;
 end $$;
 
--- Returned/Refused/Cancelled put stock back; moving out of them takes it out again. Keep in sync with VOID in lib/format.ts.
+-- 4. Update order (new)
+create or replace function update_order(p_id int, p_order jsonb, p_items jsonb) returns void
+language plpgsql as $$
+declare
+  old_status text;
+  new_status text;
+  old_prices jsonb;
+  it jsonb; pid int; q int; price numeric;
+  sub numeric := 0;
+begin
+  if jsonb_array_length(p_items) = 0 then raise exception 'Add at least one item'; end if;
+
+  select status into old_status from orders where id = p_id for update;
+  if not found then raise exception 'Order not found'; end if;
+
+  -- no status chip selected (e.g. Cancelled order) keeps the current status
+  new_status := coalesce(nullif(p_order->>'status', ''), old_status);
+
+  -- status first: the restock trigger fixes stock for the OLD items
+  update orders set status = new_status where id = p_id;
+
+  -- keep price snapshot for products already in the order
+  select coalesce(jsonb_object_agg(product_id, price), '{}') into old_prices
+    from order_items where order_id = p_id;
+
+  -- if the order counts toward stock, put the old items back
+  if new_status not in ('Returned','Refused','Cancelled') then
+    update products p set stock_qty = p.stock_qty + i.q
+      from (select product_id, sum(qty) q from order_items where order_id = p_id group by 1) i
+     where p.id = i.product_id;
+  end if;
+
+  delete from order_items where order_id = p_id;
+
+  -- insert new items, deducting stock only if the order counts
+  for it in select * from jsonb_array_elements(p_items) loop
+    pid := (it->>'product_id')::int;
+    q   := (it->>'qty')::int;
+    select coalesce((old_prices->>pid::text)::numeric, sell_price) into price from products where id = pid;
+    if price is null then raise exception 'Product not found'; end if;
+    if new_status not in ('Returned','Refused','Cancelled') then
+      update products set stock_qty = stock_qty - q where id = pid;
+    end if;
+    insert into order_items values (p_id, pid, q, price);
+    sub := sub + q * price;
+  end loop;
+
+  update orders set
+    order_date    = (p_order->>'order_date')::date,
+    customer_name = p_order->>'customer_name',
+    phone         = p_order->>'phone',
+    address       = p_order->>'address',
+    channel       = p_order->>'channel',
+    payment       = p_order->>'payment',
+    discount      = coalesce(nullif(p_order->>'discount', '')::numeric, 0)
+  where id = p_id;
+
+  update orders set total = greatest(sub - discount, 0) where id = p_id;
+end $$;
+
+-- 5. Restock trigger (unchanged, included so the file is complete)
 create or replace function restock_on_status() returns trigger
 language plpgsql as $$
 declare
@@ -114,6 +191,10 @@ end $$;
 create or replace trigger orders_restock after update of status on orders
 for each row execute function restock_on_status();
 
+
+alter table orders drop constraint if exists orders_status_check;
+alter table orders add constraint orders_status_check
+  check (status in ('Pending','Sent to Upaya','Delivered','Returned','Refused','Cancelled'));
 
 -- Logins. At most 3 people: ids are fixed slots 1–3. Passwords are bcrypt via pgcrypto's crypt().
 -- Add a user / reset a password: npm run user -- <username>

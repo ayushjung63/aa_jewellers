@@ -167,14 +167,75 @@ export async function setOrderField(id: number, field: "status" | "payment", val
   revalidatePath("/", "layout");
 }
 
+export async function deleteOrder(id: number): Promise<State> {
+  const u = await me();
+  try {
+    const [o] = await sql`select customer_name, total, status from orders where id = ${id}`;
+    if (!o) return { error: "Order not found" };
+    await sql.begin(async (tx) => {
+      // give stock back first; remove this if your trigger already does it on delete
+      await tx`
+        update products p set stock_qty = p.stock_qty + i.qty
+        from order_items i where i.order_id = ${id} and i.product_id = p.id`;
+      await tx`delete from order_items where order_id = ${id}`;
+      await tx`delete from orders where id = ${id}`;
+    });
+    await log(u, `Deleted order #${id} for ${o.customer_name} (Rs ${o.total}, ${o.status})`);
+  } catch (e) {
+    return { error: pgError(e).message };
+  }
+  revalidatePath("/", "layout");
+  redirect("/orders");
+}
+
+export async function updateOrder(
+  id: number,
+  order: Record<string, string | number>,
+  items: { product_id: number; qty: number }[],
+): Promise<State> {
+  const u = await me();
+  if (!String(order.customer_name ?? "").trim()) return { error: "Customer name is required" };
+  if (!items.length) return { error: "Add at least one item" };
+  try {
+    await sql`select update_order(${id}, ${sql.json(order)}, ${sql.json(items)})`;
+    await log(u, `Edited order #${id} for ${order.customer_name}`);
+  } catch (e) {
+    return { error: pgError(e).message };
+  }
+  revalidatePath("/", "layout");
+  redirect(`/orders/${id}`);
+}
 // ---------- expenses ----------
+function expenseRow(f: FormData) {
+  return {
+    title: str(f, "title"),
+    amount: num(f, "amount"),
+    date: str(f, "date"),
+    in_profit: f.get("in_profit") === "on", // unchecked box sends nothing
+  };
+}
+
 export async function addExpense(_: State, f: FormData): Promise<State> {
   const u = await me();
-  const row = { title: str(f, "title"), amount: num(f, "amount"), date: str(f, "date") };
+  const row = expenseRow(f);
   if (!row.title || row.amount <= 0 || !row.date) return { error: "Fill title, amount and date" };
   try {
     await sql`insert into expenses ${sql(row)}`;
     await log(u, `Added expense ${row.title} (Rs ${row.amount})`);
+  } catch (e) {
+    return { error: pgError(e).message };
+  }
+  revalidatePath("/", "layout");
+}
+
+export async function updateExpense(_: State, f: FormData): Promise<State> {
+  const u = await me();
+  const id = Number(f.get("id"));
+  const row = expenseRow(f);
+  if (!id || !row.title || row.amount <= 0 || !row.date) return { error: "Fill title, amount and date" };
+  try {
+    await sql`update expenses set ${sql(row)} where id = ${id}`;
+    await log(u, `Edited expense ${row.title} (Rs ${row.amount})`);
   } catch (e) {
     return { error: pgError(e).message };
   }
