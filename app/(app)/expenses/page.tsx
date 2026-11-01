@@ -1,14 +1,13 @@
-import { ExpenseForm } from "./expense-form";
-import { deleteExpense } from "@/app/actions";
-import { niceDate, rs, today } from "@/lib/format";
+import { ExpenseForm, type Expense } from "./expense-form";
+import { ExpenseRow } from "./expense-row";
+import { rs, today } from "@/lib/format";
 import { sql } from "@/lib/db";
 
 export default async function Expenses() {
-  // ponytail: recent 300 only; add paging if older months are needed here
-  const data = await sql<{ id: number; title: string; amount: number; date: string }[]>`select * from expenses order by date desc, id desc limit 300`;
+  const data = await sql<Expense[]>`select * from expenses order by date desc, id desc limit 300`;
   const t = today();
 
-  const months = new Map<string, { id: number; title: string; amount: number; date: string }[]>();
+  const months = new Map<string, Expense[]>();
   for (const e of data) {
     const key = new Date(e.date + "T00:00:00").toLocaleDateString("en-GB", { month: "long", year: "numeric" });
     months.set(key, [...(months.get(key) ?? []), e]);
@@ -27,16 +26,7 @@ export default async function Expenses() {
           </div>
           <div className="card divide-y divide-line">
             {rows.map((e) => (
-              <div key={e.id} className="flex items-center gap-3 px-4 py-3">
-                <div className="min-w-0 flex-1">
-                  <p className="truncate">{e.title}</p>
-                  <p className="text-xs text-muted">{niceDate(e.date)}</p>
-                </div>
-                <span className="num text-sm font-semibold">{rs(e.amount)}</span>
-                <form action={deleteExpense.bind(null, e.id)}>
-                  <button aria-label={`Delete ${e.title}`} className="grid size-8 place-items-center rounded-full text-muted hover:bg-bg">✕</button>
-                </form>
-              </div>
+              <ExpenseRow key={`${e.id}-${e.title}-${e.amount}-${e.date}-${e.in_profit}`} e={e} />
             ))}
           </div>
         </section>
