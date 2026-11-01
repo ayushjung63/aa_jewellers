@@ -9,16 +9,25 @@ export default async function Dashboard() {
   const t = today();
   const from = daysAgo(t, 29);
 
-  const [user, orders, expenses, low, recent] = await Promise.all([
-    currentUser(),
-    sql<{ order_date: string; total: number }[]>`select order_date, total from orders where order_date >= ${from} and status not in ${sql(VOID)}`,
-    sql<{ amount: number }[]>`select amount from expenses where in_profit and date between ${from} and ${t}`,
-    sql<{ id: number; name: string; stock_qty: number }[]>`select id, name, stock_qty from products where stock_qty <= low_stock_at order by stock_qty, name limit 5`,
-    sql<{ id: number; customer_name: string; order_date: string; total: number; status: string }[]>`select id, customer_name, order_date, total, status from orders order by id desc limit 5`,
-  ]);
+const [user, orders, expenses, low, recent, costRows] = await Promise.all([
+  currentUser(),
+  sql<{ order_date: string; total: number }[]>`select order_date, total from orders where order_date >= ${from} and status not in ${sql(VOID)}`,
+  sql<{ amount: number }[]>`select amount from expenses where in_profit and date between ${from} and ${t}`,
+  sql<{ id: number; name: string; stock_qty: number }[]>`select id, name, stock_qty from products where stock_qty <= low_stock_at order by stock_qty, name limit 5`,
+  sql<{ id: number; customer_name: string; order_date: string; total: number; status: string }[]>`select id, customer_name, order_date, total, status from orders order by id desc limit 5`,
+  sql<{ cost: number }[]>`
+    select coalesce(sum(i.qty * p.cost_price), 0) as cost
+    from order_items i
+    join orders o on o.id = i.order_id
+    join products p on p.id = i.product_id
+    where o.order_date >= ${from} and o.status not in ${sql(VOID)}`,
+]);
 
-  const w = salesWindows(orders, t);
-  const spent = expenses.reduce((s, e) => s + Number(e.amount), 0);
+const w = salesWindows(orders, t);
+const spent = expenses.reduce((s, e) => s + Number(e.amount), 0);
+const cost = Number(costRows[0]?.cost ?? 0);
+const revenue = w.month.sales - spent;      // total sales - expenses
+const profit = w.month.sales - cost - spent; // sp - cp - discount - expenses
 
   return (
     <div className="space-y-5">
@@ -39,11 +48,14 @@ export default async function Dashboard() {
       </section>
 
       <section className="grid grid-cols-2 gap-3">
-        <Stat label="Last 7 days" value={rs(w.week.sales)} sub={`${w.week.count} orders`} />
-        <Stat label="Last 30 days" value={rs(w.month.sales)} sub={`${w.month.count} orders`} />
-        <Stat label="Expenses · 30d" value={rs(spent)} />
-        <Stat label="Net · 30d" value={rs(w.month.sales - spent)} tone={w.month.sales - spent < 0 ? "text-red-600" : "text-emerald-700"} />
-      </section>
+  <Stat label="Last 7 days" value={rs(w.week.sales)} sub={`${w.week.count} orders`} />
+  <Stat label="Last 30 days" value={rs(w.month.sales)} sub={`${w.month.count} orders`} />
+  <Stat label="Expenses · 30d" value={rs(spent)} />
+  <Stat label="Revenue · 30d" value={rs(revenue)} sub="Sales − expenses" tone={revenue < 0 ? "text-red-600" : ""} />
+  <div className="col-span-2">
+    <Stat label="Net profit · 30d" value={rs(profit)} sub="Sales − cost − discount − expenses" tone={profit < 0 ? "text-red-600" : "text-emerald-700"} />
+  </div>
+</section>
 
       {low.length > 0 && (
         <section>
